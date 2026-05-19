@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import CreateRoomForm from './components/CreateRoomForm';
+import RoomView from './components/RoomView';
 
 interface Room {
   id: string;
@@ -9,6 +10,7 @@ interface Room {
 
 function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
 
   useEffect(() => {
     fetch('/api/events')
@@ -20,6 +22,10 @@ function App() {
     setRooms(prev => [...prev, room]);
   }
 
+  if (activeRoom) {
+    return <RoomView room={activeRoom} onBack={() => setActiveRoom(null)} />;
+  }
+
   return (
     <div>
       <h1>Setlist Live - Admin</h1>
@@ -27,7 +33,9 @@ function App() {
       <ul>
         {rooms.map((room) => (
           <li key={room.id}>
-            {room.name} — code: <strong>{room.roomCode}</strong>
+            <button onClick={() => setActiveRoom(room)}>
+              {room.name} — code: <strong>{room.roomCode}</strong>
+            </button>
           </li>
         ))}
       </ul>

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { getIO } from '../lib/socket';
 
 const router = Router();
 
@@ -57,6 +58,37 @@ router.get('/:id/setlist', async (req, res) => {
     res.json({ songs: event.songs });
   } catch {
     res.status(500).json({ error: 'Failed to fetch setlist' });
+  }
+});
+
+// POST /api/events/:id/songs - add a song and broadcast to the room
+router.post('/:id/songs', async (req, res) => {
+  const { title, artist } = req.body;
+
+  if (!title || !artist) {
+    res.status(400).json({ error: 'title and artist are required' });
+    return;
+  }
+
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const song = await prisma.song.create({
+      data: { title, artist, eventId: req.params.id },
+    });
+
+    getIO().to(event.roomCode).emit('song:added', song);
+
+    res.status(201).json(song);
+  } catch {
+    res.status(500).json({ error: 'Failed to add song' });
   }
 });
 
