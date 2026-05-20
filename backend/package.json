@@ -1,7 +1,7 @@
 {
-  "name": "setlist-live-backend",
+  "name": "vibe-check-backend",
   "version": "1.0.0",
-  "description": "Setlist Live backend API server",
+  "description": "Vibe Check backend API server",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

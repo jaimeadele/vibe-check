@@ -1,5 +1,5 @@
 {
-  "name": "setlist-live",
+  "name": "vibe-check",
   "version": "1.0.0",
   "description": "Monorepo root — scripts to run frontend and backend together",
   "private": true,

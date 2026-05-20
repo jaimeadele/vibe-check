@@ -28,7 +28,7 @@ function App() {
 
   return (
     <div>
-      <h1>Setlist Live - Admin</h1>
+      <h1>Vibe Check - Admin</h1>
       <CreateRoomForm onRoomCreated={handleRoomCreated} />
       <ul>
         {rooms.map((room) => (
