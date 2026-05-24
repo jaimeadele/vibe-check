@@ -9,6 +9,14 @@ export interface SpotifyResult {
   previewUrl: string | null;
 }
 
+export interface SpotifySearchResult {
+  spotifyId: string;
+  title: string;
+  artist: string;
+  albumArt: string | null;
+  previewUrl: string | null;
+}
+
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
@@ -44,4 +52,24 @@ export async function searchTrack(title: string, artist: string): Promise<Spotif
     albumArt: track.album.images?.[0]?.url ?? null,
     previewUrl: track.preview_url ?? null,
   };
+}
+
+export async function searchTracks(query: string): Promise<SpotifySearchResult[]> {
+  const token = await getToken();
+  const encoded = encodeURIComponent(query);
+
+  const res = await axios.get(
+    `https://api.spotify.com/v1/search?q=${encoded}&type=track&limit=5`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  const items = res.data.tracks?.items ?? [];
+
+  return items.map((track: any) => ({
+    spotifyId: track.id,
+    title: track.name,
+    artist: track.artists?.[0]?.name ?? 'Unknown Artist',
+    albumArt: track.album.images?.[0]?.url ?? null,
+    previewUrl: track.preview_url ?? null,
+  }));
 }

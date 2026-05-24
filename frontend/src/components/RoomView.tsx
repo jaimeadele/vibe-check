@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { useRoomSocket } from '../hooks/useRoomSocket';
 import IdentifyButton from './IdentifyButton';
 
+interface SpotifySearchResult {
+  spotifyId: string;
+  title: string;
+  artist: string;
+  albumArt: string | null;
+  previewUrl: string | null;
+}
+
 interface Song {
   id: string;
   title: string;
@@ -46,6 +54,9 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SpotifySearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [status, setStatus] = useState(room.status);
   const [startTime, setStartTime] = useState(room.startTime);
   const [editingStartTime, setEditingStartTime] = useState(false);
@@ -67,15 +78,49 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
     onRoomUpdate(room.id, { status: newStatus as Room['status'] });
   });
 
-  function handleAddSong(e: React.SubmitEvent) {
+  function handleAddSong(e: React.FormEvent) {
     e.preventDefault();
     fetch(`/api/events/${room.id}/songs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ title, artist }),
     });
     setTitle('');
     setArtist('');
+  }
+
+  async function handleSpotifySearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    setSearchResults([]);
+    try {
+      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(searchQuery)}`, {
+        credentials: 'include',
+      });
+      const data = await res.json();
+      setSearchResults(data.results ?? []);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function handlePickSpotifyResult(result: SpotifySearchResult) {
+    await fetch(`/api/events/${room.id}/songs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        title: result.title,
+        artist: result.artist,
+        albumArt: result.albumArt,
+        previewUrl: result.previewUrl,
+        spotifyId: result.spotifyId,
+      }),
+    });
+    setSearchQuery('');
+    setSearchResults([]);
   }
 
   async function handleStatusChange(newStatus: string) {
@@ -201,28 +246,82 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
         {/* Identify button */}
         <IdentifyButton eventId={room.id} roomLocked={isIdentifying} eventActive={status === 'ACTIVE'} />
 
-        {/* Manual add song form */}
-        <form onSubmit={handleAddSong} className='flex flex-col gap-2 mt-4 sm:flex-row sm:gap-3'>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder='Song title'
-            className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
-          />
-          <input
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-            placeholder='Artist'
-            className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
-          />
-          <button
-            type='submit'
-            disabled={!title || !artist}
-            className='w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-3 rounded-xl transition-colors text-sm cursor-pointer'
-          >
-            Add
-          </button>
-        </form>
+        {/* Privileged: Spotify search + manual add */}
+        {isPrivileged && (
+          <div className='mt-4 flex flex-col gap-4'>
+
+            {/* Spotify search */}
+            <form onSubmit={handleSpotifySearch} className='flex gap-2'>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder='Search Spotify to add a song…'
+                className='flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
+              />
+              <button
+                type='submit'
+                disabled={!searchQuery.trim() || isSearching}
+                className='bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-3 rounded-xl transition-colors text-sm cursor-pointer shrink-0'
+              >
+                {isSearching ? '…' : 'Search'}
+              </button>
+            </form>
+
+            {/* Search results */}
+            {searchResults.length > 0 && (
+              <ul className='flex flex-col gap-2'>
+                {searchResults.map((result) => (
+                  <li key={result.spotifyId}>
+                    <button
+                      onClick={() => handlePickSpotifyResult(result)}
+                      className='w-full flex items-center gap-3 bg-gray-900 border border-gray-700 hover:border-accent rounded-xl px-4 py-3 transition-colors cursor-pointer text-left'
+                    >
+                      {result.albumArt ? (
+                        <img src={result.albumArt} alt={result.title} className='w-10 h-10 rounded-lg object-cover shrink-0' />
+                      ) : (
+                        <div className='w-10 h-10 rounded-lg bg-gray-800 shrink-0' />
+                      )}
+                      <div className='flex-1 min-w-0'>
+                        <p className='text-white text-sm font-medium truncate'>{result.title}</p>
+                        <p className='text-gray-400 text-xs truncate'>{result.artist}</p>
+                      </div>
+                      <span className='text-accent text-xs shrink-0'>Add</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Manual fallback */}
+            <details className='group'>
+              <summary className='text-xs text-gray-500 hover:text-gray-300 cursor-pointer transition-colors select-none'>
+                Add manually instead
+              </summary>
+              <form onSubmit={handleAddSong} className='flex flex-col gap-2 mt-2 sm:flex-row sm:gap-3'>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder='Song title'
+                  className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
+                />
+                <input
+                  value={artist}
+                  onChange={(e) => setArtist(e.target.value)}
+                  placeholder='Artist'
+                  className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
+                />
+                <button
+                  type='submit'
+                  disabled={!title || !artist}
+                  className='w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-3 rounded-xl transition-colors text-sm cursor-pointer'
+                >
+                  Add
+                </button>
+              </form>
+            </details>
+
+          </div>
+        )}
 
         {/* Setlist */}
         <div className='mt-8'>

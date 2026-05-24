@@ -161,6 +161,7 @@ All routes are prefixed with `/api`.
 | `DELETE` | `/events/:id/songs/:songId` | Remove a song (DJ/admin) |
 | `POST` | `/events/:id/identify/reserve` | Acquire identification lock |
 | `POST` | `/events/:id/identify` | Submit audio for identification |
+| `GET` | `/spotify/search?q=...` | Search Spotify for tracks (DJ/admin only) |
 
 ---
 

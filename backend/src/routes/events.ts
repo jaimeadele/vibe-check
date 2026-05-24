@@ -70,7 +70,7 @@ router.get('/:id/setlist', async (req, res) => {
 
 // POST /api/events/:id/songs - add a song and broadcast to the room
 router.post('/:id/songs', requireAuth, requirePrivileged, async (req, res) => {
-  const { title, artist } = req.body;
+  const { title, artist, albumArt, previewUrl, spotifyId } = req.body;
 
   if (!title || !artist) {
     res.status(400).json({ error: 'title and artist are required' });
@@ -93,7 +93,14 @@ router.post('/:id/songs', requireAuth, requirePrivileged, async (req, res) => {
     }
 
     const song = await prisma.song.create({
-      data: { title, artist, eventId: req.params.id },
+      data: {
+        title,
+        artist,
+        eventId: req.params.id,
+        albumArt: albumArt ?? null,
+        previewUrl: previewUrl ?? null,
+        spotifyId: spotifyId ?? null,
+      },
     });
 
     getIO().to(event.roomCode).emit('song:added', song);
