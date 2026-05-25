@@ -18,6 +18,7 @@ app.use(passport.initialize());
 const allowedOrigins = [
   'http://localhost:5173',
   /https:\/\/.*\.ngrok-free\.app$/,  // ngrok free tier domains
+  /https:\/\/.*\.ngrok-free\.dev$/,  // ngrok free tier .dev domains
   /https:\/\/.*\.ngrok\.io$/,        // ngrok paid/legacy domains
 ];
 

@@ -27,6 +27,8 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { user, isPrivileged, login, logout } = useCurrentUser();
 
   useEffect(() => {
@@ -52,13 +54,14 @@ function App() {
     if (res.ok) setRooms(prev => prev.filter(r => r.id !== roomId));
   }
 
-  async function handleLogin(e: React.SubmitEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     const success = await login(email, password);
     if (success) {
       setEmail('');
       setPassword('');
       setLoginError(false);
+      setModalOpen(false);
     } else {
       setLoginError(true);
     }
@@ -108,55 +111,115 @@ function App() {
   return (
     <div className='min-h-screen bg-gray-950 flex flex-col items-center py-8 sm:py-12'>
       <div className='w-full max-w-lg px-4'>
-        <h1 className='text-4xl font-bold text-white tracking-tight mb-1'>
-          Vibe Check
-        </h1>
-        <p className='text-gray-400 mb-10'>Manage your events and rooms</p>
-
-        {user ? (
-          <div className='flex items-center justify-between mb-6 text-sm'>
-            <span className='text-gray-400'>
-              Signed in as <span className='text-accent'>{user.role}</span>
-            </span>
-            <button
-              onClick={logout}
-              className='text-gray-500 hover:text-white transition-colors cursor-pointer'
-            >
-              Sign out
-            </button>
+        {/* Header row — title/subtitle left, auth controls right */}
+        <div className='flex items-start justify-between mb-10'>
+          <div>
+            <h1 className='text-4xl font-bold text-white tracking-tight mb-1'>
+              Vibe Check
+            </h1>
+            <p className='text-gray-400'>Manage your events and rooms</p>
           </div>
-        ) : (
-          <form onSubmit={handleLogin} className='flex flex-col gap-3 mb-8'>
-            <input
-              type='email'
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder='Email'
-              className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent
-  transition-colors text-base sm:text-sm'
-            />
-            <input
-              type='password'
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder='Password'
-              className='w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent
-  transition-colors text-base sm:text-sm'
-            />
-            <button
-              type='submit'
-              disabled={!email || !password}
-              className='w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl 
-  transition-colors text-sm cursor-pointer'
-            >
-              Sign in
-            </button>
-            {loginError && (
-              <p className='text-red-400 text-sm text-center'>
-                Invalid email or password
-              </p>
+
+          <div className='pt-1 shrink-0 ml-4'>
+            {user ? (
+              <div className='flex items-center gap-3 text-sm'>
+                <span className='text-gray-400'>
+                  <span className='text-accent'>{user.role}</span>
+                </span>
+                <button
+                  onClick={logout}
+                  className='text-gray-500 hover:text-white transition-colors cursor-pointer'
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setModalOpen(true)}
+                className='bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors cursor-pointer'
+              >
+                Sign in
+              </button>
             )}
-          </form>
+          </div>
+        </div>
+
+        {/* Sign-in modal */}
+        {modalOpen && (
+          <div
+            className='fixed inset-0 z-50 flex items-center justify-center bg-black/60'
+            onClick={() => { setModalOpen(false); setLoginError(false); }}
+          >
+            <div
+              className='bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-sm mx-4'
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className='flex items-center justify-between mb-5'>
+                <h2 className='text-white font-semibold text-lg'>Sign in</h2>
+                <button
+                  onClick={() => { setModalOpen(false); setLoginError(false); }}
+                  className='text-gray-500 hover:text-white transition-colors cursor-pointer'
+                  aria-label='Close'
+                >
+                  <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+                    <line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>
+                  </svg>
+                </button>
+              </div>
+              <form onSubmit={handleLogin} className='flex flex-col gap-3'>
+                <input
+                  type='email'
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder='Email'
+                  autoFocus
+                  className='w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
+                />
+                <div className='relative'>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder='Password'
+                    className='w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-11 text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors text-base sm:text-sm'
+                  />
+                  <button
+                    type='button'
+                    onClick={() => setShowPassword(prev => !prev)}
+                    className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer'
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? (
+                      /* eye-off */
+                      <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                        <path d='M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94'/>
+                        <path d='M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19'/>
+                        <line x1='1' y1='1' x2='23' y2='23'/>
+                      </svg>
+                    ) : (
+                      /* eye */
+                      <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                        <path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/>
+                        <circle cx='12' cy='12' r='3'/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <button
+                  type='submit'
+                  disabled={!email || !password}
+                  className='w-full bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm cursor-pointer'
+                >
+                  Sign in
+                </button>
+                {loginError && (
+                  <p className='text-red-400 text-sm text-center'>
+                    Invalid email or password
+                  </p>
+                )}
+              </form>
+            </div>
+          </div>
         )}
 
         {user?.role === 'ADMIN' && <CreateRoomForm onRoomCreated={handleRoomCreated} />}

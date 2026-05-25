@@ -149,6 +149,8 @@ All routes are prefixed with `/api`.
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Server health check |
+| `POST` | `/auth/register` | Register an admin account (email + password) |
+| `POST` | `/auth/login` | Email/password login — returns a JWT cookie |
 | `GET` | `/auth/google` | Initiate Google OAuth login |
 | `GET` | `/auth/google/callback` | OAuth callback |
 | `GET` | `/auth/me` | Get current user |

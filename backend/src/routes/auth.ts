@@ -33,7 +33,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await prisma.user.findUnique({ where: { email } });
+const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.passwordHash) {
     res.status(401).json({ error: 'Invalid credentials' });
     return;
