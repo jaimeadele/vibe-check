@@ -11,6 +11,7 @@ A real-time DJ set song identification platform. Attendees at a live event can i
 - ⭐ **Ratings & requests** — attendees can rate songs and request tracks; requests are sorted by votes
 - 🔒 **Role-based access** — Google OAuth login; DJs and admins can remove songs, delete events, and export Spotify playlists
 - 🔁 **Duplicate detection** — if the same song is identified twice in a row, it is skipped and the user sees an "Already playing" message instead of a duplicate entry
+- 📍 **Venues & geofencing** — events can be linked to a venue; regular users must be within the venue's geofence radius to identify songs (checked on every tap, not just room entry)
 
 ---
 
@@ -61,6 +62,7 @@ Before running locally, you need:
 - **ACRCloud account** — [acrcloud.com](https://www.acrcloud.com) — free tier available; you need a project's Host, Access Key, and Access Secret
 - **Google OAuth credentials** — [Google Cloud Console](https://console.cloud.google.com) — create an OAuth 2.0 Client ID with `http://localhost:3000/api/auth/google/callback` as an authorized redirect URI
 - **Spotify app credentials** — [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) — free; used for album art and track metadata
+- **Google Maps API key** — [Google Cloud Console](https://console.cloud.google.com) — enable the **Places API (New)**; used for venue address autocomplete in the admin form
 
 ---
 
@@ -100,6 +102,16 @@ ACRCLOUD_ACCESS_SECRET=
 SPOTIFY_CLIENT_ID=   # from Spotify Developer Dashboard
 SPOTIFY_CLIENT_SECRET=
 ENCRYPTION_KEY=      # any 32-character random string
+```
+
+The frontend also needs its own env file:
+
+```bash
+cp frontend/.env.example frontend/.env
+```
+
+```env
+VITE_GOOGLE_MAPS_API_KEY=   # from Google Cloud Console (Places API New enabled)
 ```
 
 ### 3. Start Docker (Postgres + Redis)
@@ -164,6 +176,11 @@ All routes are prefixed with `/api`.
 | `POST` | `/events/:id/identify/reserve` | Acquire identification lock |
 | `POST` | `/events/:id/identify` | Submit audio for identification |
 | `GET` | `/spotify/search?q=...` | Search Spotify for tracks (DJ/admin only) |
+| `GET` | `/venues` | List all venues (admin) |
+| `POST` | `/venues` | Create a venue with lat/lng and geofence radius (admin) |
+| `POST` | `/venues/validate-location/:eventId` | Check if coordinates are within the event's venue geofence |
+| `PATCH` | `/events/:id/status` | Update event status (admin) |
+| `PATCH` | `/events/:id/startTime` | Update event start time (admin) |
 
 ---
 

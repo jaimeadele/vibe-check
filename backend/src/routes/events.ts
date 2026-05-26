@@ -24,7 +24,7 @@ router.get('/', async (_req, res) => {
 
 // POST /api/events - create a new room
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { name, startTime } = req.body;
+  const { name, startTime, venueId } = req.body;
 
   if (!name || typeof name !== 'string') {
     res.status(400).json({ error: 'name is required' });
@@ -41,6 +41,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         name,
         roomCode: generateRoomCode(),
         startTime: new Date(startTime),
+        venueId: venueId ?? null,
       },
     });
     res.status(201).json(event);

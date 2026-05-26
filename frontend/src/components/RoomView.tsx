@@ -26,6 +26,7 @@ interface Room {
   status: 'UPCOMING' | 'ACTIVE' | 'CLOSED';
   startTime: string;
   createdAt: string;
+  venueId: string | null;
 }
 
 interface Props {
@@ -62,7 +63,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   const [editingStartTime, setEditingStartTime] = useState(false);
   const [startTimeInput, setStartTimeInput] = useState(toInputValue(room.startTime));
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
-
   useEffect(() => {
     fetch(`/api/events/${room.id}/setlist`)
       .then((res) => res.json())
@@ -214,7 +214,9 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
               <h1 className='text-2xl font-bold text-white'>{room.name}</h1>
             </div>
 
-            <span className='text-xs font-mono text-accent'>{room.roomCode}</span>
+            {isPrivileged && (
+              <span className='text-xs font-mono text-accent'>{room.roomCode}</span>
+            )}
 
             {editingStartTime ? (
               <div className='flex items-center gap-2 mt-2'>
@@ -243,8 +245,13 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
           </div>
         </div>
 
-        {/* Identify button */}
-        <IdentifyButton eventId={room.id} roomLocked={isIdentifying} eventActive={status === 'ACTIVE'} />
+        {/* Identify button — geofence checked on every tap for non-privileged users */}
+        <IdentifyButton
+          eventId={room.id}
+          roomLocked={isIdentifying}
+          eventActive={status === 'ACTIVE'}
+          venueId={isPrivileged ? null : room.venueId}
+        />
 
         {/* Privileged: Spotify search + manual add */}
         {isPrivileged && (

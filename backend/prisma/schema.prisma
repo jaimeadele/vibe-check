@@ -8,6 +8,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Venue {
+  id              String  @id @default(uuid())
+  name            String
+  address         String?
+  lat             Float
+  lng             Float
+  geoFenceRadius  Int     @default(150)
+  events          Event[]
+}
+
 model Event {
   id        String      @id @default(uuid())
   name      String
@@ -15,6 +25,8 @@ model Event {
   status    EventStatus @default(UPCOMING)
   startTime DateTime
   createdAt DateTime    @default(now())
+  venueId   String?
+  venue     Venue?      @relation(fields: [venueId], references: [id])
   songs     Song[]
 }
 
