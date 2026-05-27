@@ -9,6 +9,7 @@ interface Room {
   startTime: string;
   createdAt: string;
   venueId: string | null;
+  venue: { id: string; name: string; address: string | null } | null;
 }
 
 interface Venue {

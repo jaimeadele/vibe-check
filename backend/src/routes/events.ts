@@ -10,11 +10,12 @@ function generateRoomCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// GET /api/events - list all rooms
+// GET /api/events - list all rooms (venue name/address included for display)
 router.get('/', async (_req, res) => {
   try {
     const events = await prisma.event.findMany({
       orderBy: { createdAt: 'desc' },
+      include: { venue: { select: { id: true, name: true, address: true } } },
     });
     res.json({ rooms: events });
   } catch {
@@ -43,6 +44,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         startTime: new Date(startTime),
         venueId: venueId ?? null,
       },
+      include: { venue: { select: { id: true, name: true, address: true } } },
     });
     res.status(201).json(event);
   } catch {
@@ -150,6 +152,28 @@ router.patch('/:id/startTime', requireAuth, requireAdmin, async (req, res) => {
     res.json(event);
   } catch {
     res.status(500).json({ error: 'Failed to update start time' });
+  }
+});
+
+// PATCH /api/events/:id/venue - assign or clear the venue for an event (admin only)
+router.patch('/:id/venue', requireAuth, requireAdmin, async (req, res) => {
+  const { venueId } = req.body;
+
+  // venueId must be a non-empty string (a venue id) or null/undefined (to clear)
+  if (venueId !== null && venueId !== undefined && typeof venueId !== 'string') {
+    res.status(400).json({ error: 'venueId must be a string or null' });
+    return;
+  }
+
+  try {
+    const event = await prisma.event.update({
+      where: { id: req.params.id },
+      data: { venueId: venueId || null },
+      include: { venue: { select: { id: true, name: true, address: true } } },
+    });
+    res.json(event);
+  } catch {
+    res.status(500).json({ error: 'Failed to update venue' });
   }
 });
 

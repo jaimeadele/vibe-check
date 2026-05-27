@@ -19,6 +19,12 @@ interface Song {
   identifiedAt: string;
 }
 
+interface VenueSummary {
+  id: string;
+  name: string;
+  address: string | null;
+}
+
 interface Room {
   id: string;
   name: string;
@@ -27,6 +33,7 @@ interface Room {
   startTime: string;
   createdAt: string;
   venueId: string | null;
+  venue: VenueSummary | null;
 }
 
 interface Props {
@@ -63,6 +70,11 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   const [editingStartTime, setEditingStartTime] = useState(false);
   const [startTimeInput, setStartTimeInput] = useState(toInputValue(room.startTime));
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [venue, setVenue] = useState<VenueSummary | null>(room.venue);
+  const [editingVenue, setEditingVenue] = useState(false);
+  const [venueOptions, setVenueOptions] = useState<VenueSummary[]>([]);
+  const [selectedVenueId, setSelectedVenueId] = useState(room.venue?.id ?? '');
+  const [savingVenue, setSavingVenue] = useState(false);
   useEffect(() => {
     fetch(`/api/events/${room.id}/setlist`)
       .then((res) => res.json())
@@ -149,6 +161,33 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
       setStartTimeInput(toInputValue(updated.startTime));
       setEditingStartTime(false);
       onRoomUpdate(room.id, { startTime: updated.startTime });
+    }
+  }
+
+  async function handleStartEditVenue() {
+    const res = await fetch('/api/venues', { credentials: 'include' });
+    const data = await res.json();
+    setVenueOptions(data.venues ?? []);
+    setSelectedVenueId(venue?.id ?? '');
+    setEditingVenue(true);
+  }
+
+  async function handleSaveVenue() {
+    setSavingVenue(true);
+    try {
+      const res = await fetch(`/api/events/${room.id}/venue`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ venueId: selectedVenueId || null }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setVenue(updated.venue);
+        setEditingVenue(false);
+      }
+    } finally {
+      setSavingVenue(false);
     }
   }
 
@@ -242,6 +281,45 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
                 )}
               </div>
             )}
+
+            {/* Venue — display for everyone, editable by admins */}
+            {editingVenue ? (
+              <div className='flex items-center gap-2 mt-1'>
+                <div className='relative'>
+                  <select
+                    value={selectedVenueId}
+                    onChange={e => setSelectedVenueId(e.target.value)}
+                    className='appearance-none bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-8 py-1.5 text-white text-sm focus:outline-none focus:border-accent transition-colors'
+                  >
+                    <option value=''>No venue</option>
+                    {venueOptions.map(v => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                  <svg className='pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+                    <polyline points='6 9 12 15 18 9' />
+                  </svg>
+                </div>
+                <button onClick={handleSaveVenue} disabled={savingVenue} className='text-sm text-accent hover:text-accent-hover transition-colors cursor-pointer disabled:opacity-40'>
+                  {savingVenue ? 'Saving…' : 'Save'}
+                </button>
+                <button onClick={() => setEditingVenue(false)} className='text-sm text-gray-500 hover:text-white transition-colors cursor-pointer'>Cancel</button>
+              </div>
+            ) : (venue || isPrivileged) && (
+              <div className='flex items-center gap-2 mt-1'>
+                {venue && (
+                  <span className='text-sm text-gray-400'>📍 {venue.name}</span>
+                )}
+                {isPrivileged && (
+                  <button
+                    onClick={handleStartEditVenue}
+                    className='text-sm text-gray-500 hover:text-white bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded-lg transition-colors cursor-pointer'
+                  >
+                    {venue ? 'Edit' : '+ Venue'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -250,7 +328,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
           eventId={room.id}
           roomLocked={isIdentifying}
           eventActive={status === 'ACTIVE'}
-          venueId={isPrivileged ? null : room.venueId}
+          venueId={isPrivileged ? null : venue?.id ?? null}
         />
 
         {/* Privileged: Spotify search + manual add */}
