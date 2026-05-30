@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import prisma from '../lib/prisma';
 import redis from '../lib/redis';
@@ -10,7 +10,7 @@ const router = Router({ mergeParams: true });
 const upload = multer({ storage: multer.memoryStorage() });
 
 // POST /lock — acquires the identification lock and notifies the room
-router.post('/lock', async (req, res) => {
+router.post('/lock', async (req: Request<{ id: string }>, res: Response) => {
   const { id: eventId } = req.params;
 
   const event = await prisma.event.findUnique({ where: { id: eventId } });
@@ -32,7 +32,7 @@ router.post('/lock', async (req, res) => {
 });
 
 // DELETE /lock — releases the lock when the user cancels
-router.delete('/lock', async (req, res) => {
+router.delete('/lock', async (req: Request<{ id: string }>, res: Response) => {
   const { id: eventId } = req.params;
 
   const event = await prisma.event.findUnique({ where: { id: eventId } });
@@ -48,7 +48,7 @@ router.delete('/lock', async (req, res) => {
 });
 
 // POST / — receives the recorded audio and runs identification
-router.post('/', upload.single('audio'), async (req, res) => {
+router.post('/', upload.single('audio'), async (req: Request<{ id: string }>, res: Response) => {
   const { id: eventId } = req.params;
 
   if (!req.file) {
