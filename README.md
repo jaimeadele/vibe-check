@@ -1,6 +1,6 @@
 # Vibe Check
 
-A real-time DJ set song identification platform. Attendees at a live event can identify the song currently playing, rate tracks, and submit song requests — all updating live on every connected device. DJs and venue admins get a live view of the setlist and can manage events from a privileged dashboard.
+A real-time, multi-tenant DJ set song identification platform. Each Operator (DJ collective, promoter, venue) has their own public URL slug, event list, and rooms. Attendees at a live event can identify the song currently playing, rate tracks, and submit song requests — all updating live on every connected device. Operators can manage their events and rooms from a privileged dashboard.
 
 ---
 
@@ -9,7 +9,7 @@ A real-time DJ set song identification platform. Attendees at a live event can i
 - 🎵 **Song identification** — a user holds up their phone, records a short audio clip, and the app identifies the song via ACRCloud audio fingerprinting
 - 🎧 **Live setlist** — identified songs appear on every connected device in real time via WebSockets
 - ⭐ **Ratings & requests** — attendees can rate songs and request tracks; requests are sorted by votes
-- 🔒 **Role-based access** — Google OAuth login; DJs and admins can remove songs, delete events, and export Spotify playlists
+- 🔒 **Role-based access** — Google OAuth login; Operators and assigned DJs can add/remove songs; master Admins manage operator accounts
 - 🔁 **Duplicate detection** — if the same song is identified twice in a row, it is skipped and the user sees an "Already playing" message instead of a duplicate entry
 - 📍 **Venues & geofencing** — events can be linked to a venue; regular users must be within the venue's geofence radius to identify songs (checked on every tap, not just room entry)
 - 🏟️ **Venue management** — admins can edit any venue's name, address, coordinates, and geofence radius; deleting a venue soft-deletes it (the row stays in the database so linked events are unaffected) and removes it from the event-creation dropdown; deleted venues can be restored
@@ -21,7 +21,7 @@ A real-time DJ set song identification platform. Attendees at a live event can i
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4 |
+| Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4, React Router v7 |
 | Backend | Node.js + Express + TypeScript |
 | Database | PostgreSQL 16 (via Docker) |
 | ORM | Prisma |
@@ -36,12 +36,13 @@ A real-time DJ set song identification platform. Attendees at a live event can i
 ## Project structure
 
 ```
-setlist-live/
+vibe-check/
 ├── frontend/               # React + Vite app
 │   └── src/
-│       ├── components/     # UI components
+│       ├── components/     # Shared UI components (Layout, modals, etc.)
+│       ├── contexts/       # React context providers (AuthContext)
 │       ├── hooks/          # Custom React hooks (audio capture, socket, etc.)
-│       └── pages/          # Page-level components
+│       └── pages/          # Route-level page components
 ├── backend/                # Express API server
 │   └── src/
 │       ├── lib/            # Shared setup: Prisma client, Redis, Socket.io, Passport
@@ -160,34 +161,42 @@ This starts both servers concurrently:
 
 All routes are prefixed with `/api`.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Server health check |
-| `POST` | `/auth/register` | Register an admin account (email + password) |
-| `POST` | `/auth/login` | Email/password login — returns a JWT cookie |
-| `GET` | `/auth/google` | Initiate Google OAuth login |
-| `GET` | `/auth/google/callback` | OAuth callback |
-| `GET` | `/auth/me` | Get current user |
-| `POST` | `/auth/logout` | Log out |
-| `GET` | `/events` | List events |
-| `POST` | `/events` | Create an event |
-| `GET` | `/events/:id` | Get event + setlist |
-| `PATCH` | `/events/:id` | Update event status |
-| `DELETE` | `/events/:id` | Delete event (admin) |
-| `DELETE` | `/events/:id/songs/:songId` | Remove a song (DJ/admin) |
-| `POST` | `/events/:id/identify/reserve` | Acquire identification lock |
-| `POST` | `/events/:id/identify` | Submit audio for identification |
-| `GET` | `/spotify/search?q=...` | Search Spotify for tracks (DJ/admin only) |
-| `GET` | `/venues` | List active venues (used by event-creation dropdown) |
-| `GET` | `/venues/all` | List all venues including inactive ones (admin) |
-| `POST` | `/venues` | Create a venue with lat/lng and geofence radius (admin) |
-| `PATCH` | `/venues/:id` | Edit a venue's name, address, coordinates, or radius (admin) |
-| `DELETE` | `/venues/:id` | Soft-delete a venue — sets isActive: false (admin) |
-| `PATCH` | `/venues/:id/restore` | Restore a soft-deleted venue (admin) |
-| `POST` | `/venues/validate-location/:eventId` | Check if coordinates are within the event's venue geofence |
-| `PATCH` | `/events/:id/status` | Update event status (admin) |
-| `PATCH` | `/events/:id/startTime` | Update event start time (admin) |
-| `POST` | `/songs/:id/react` | Submit or change an emoji reaction (voter cookie required; 15-min window; Redis rate-limited) |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | — | Server health check |
+| `POST` | `/auth/register` | — | Bootstrap the first Admin account |
+| `POST` | `/auth/login` | — | Email/password login — returns a JWT cookie |
+| `GET` | `/auth/me` | cookie | Get current user |
+| `POST` | `/auth/logout` | — | Clear session cookie |
+| `GET` | `/auth/google` | — | Initiate Google OAuth |
+| `POST` | `/auth/register-operator` | Admin | Create an Operator account with slug |
+| `GET` | `/operators` | — | List all operators with active event counts |
+| `GET` | `/operators/:slug` | — | Operator profile + events + rooms |
+| `GET` | `/events` | Operator/Admin | List caller's events (admin sees all) |
+| `POST` | `/events` | Operator | Create an event |
+| `PATCH` | `/events/:id/startTime` | Operator/Admin | Update event start time |
+| `PATCH` | `/events/:id/venue` | Operator/Admin | Assign or clear the event venue |
+| `DELETE` | `/events/:id` | Operator/Admin | Delete event (ownership check) |
+| `POST` | `/events/:id/rooms` | Operator/Admin | Create a room within the event |
+| `PATCH` | `/events/:id/rooms/:roomId/status` | Operator/Admin | Update room status (broadcasts via socket) |
+| `DELETE` | `/events/:id/rooms/:roomId` | Operator/Admin | Delete a room |
+| `GET` | `/events/:id/rooms/:roomId/setlist` | — | Room setlist + `isPrivileged` flag |
+| `POST` | `/events/:id/rooms/:roomId/songs` | Operator/DJ | Add a song |
+| `DELETE` | `/events/:id/rooms/:roomId/songs/:songId` | Operator/DJ | Remove a song |
+| `POST` | `/events/:id/rooms/:roomId/djs` | Operator/Admin | Assign a DJ by email |
+| `DELETE` | `/events/:id/rooms/:roomId/djs/:userId` | Operator/Admin | Remove a DJ |
+| `POST` | `/rooms/:id/identify/lock` | — | Acquire identification lock |
+| `DELETE` | `/rooms/:id/identify/lock` | — | Release identification lock |
+| `POST` | `/rooms/:id/identify` | — | Submit audio for song identification |
+| `GET` | `/venues` | — | List active venues |
+| `GET` | `/venues/all` | Operator/Admin | All venues including inactive |
+| `POST` | `/venues` | Operator/Admin | Create a venue (stores createdById) |
+| `POST` | `/venues/validate-location/:roomCode` | — | Check coordinates against room's venue geofence |
+| `PATCH` | `/venues/:id` | Creator/Admin | Edit venue fields |
+| `DELETE` | `/venues/:id` | Creator/Admin | Soft-delete a venue |
+| `PATCH` | `/venues/:id/restore` | Creator/Admin | Restore a soft-deleted venue |
+| `GET` | `/spotify/search?q=...` | Operator/DJ | Search Spotify for tracks |
+| `POST` | `/songs/:id/react` | — | Submit or change an emoji reaction (15-min window, rate-limited) |
 
 ---
 
