@@ -14,6 +14,9 @@ A real-time, multi-tenant DJ set song identification platform. Each Operator (DJ
 - 📍 **Venues & geofencing** — events can be linked to a venue; regular users must be within the venue's geofence radius to identify songs (checked on every tap, not just room entry)
 - 🏟️ **Venue management** — admins can edit any venue's name, address, coordinates, and geofence radius; deleting a venue soft-deletes it (the row stays in the database so linked events are unaffected) and removes it from the event-creation dropdown; deleted venues can be restored
 - 🔥 **Song reactions** — attendees react to each song with 🔥 ❤️ 🥱 🤮 (no login required); reactions are tied to a server-issued anonymous voter cookie; one reaction per song per browser; reactions are only open for 15 minutes after a song is identified; vibe scores update live on all connected devices via Socket.io
+- 🏢 **Multi-tenant operator platform** — each Operator (DJ collective, promoter, venue brand) gets a unique slug and public URL; their events and rooms are scoped to them
+- 🚪 **Single and multi-room events** — operators choose at creation time: single-room events drop attendees directly into the room; multi-room events show inline room buttons so attendees pick their room without a separate page
+- ✏️ **Room management** — operators can rename rooms and add new rooms to an existing event from the operator dashboard
 
 ---
 
@@ -172,11 +175,13 @@ All routes are prefixed with `/api`.
 | `POST` | `/auth/register-operator` | Admin | Create an Operator account with slug |
 | `GET` | `/operators` | — | List all operators with active event counts |
 | `GET` | `/operators/:slug` | — | Operator profile + events + rooms |
+| `PATCH` | `/operators/:id` | Admin | Edit operator name or slug |
 | `POST` | `/events` | Operator | Create an event |
 | `PATCH` | `/events/:id/startTime` | Operator/Admin | Update event start time |
 | `PATCH` | `/events/:id/venue` | Operator/Admin | Assign or clear the event venue |
 | `DELETE` | `/events/:id` | Operator/Admin | Delete event (ownership check) |
 | `POST` | `/events/:id/rooms` | Operator/Admin | Create a room within the event |
+| `PATCH` | `/events/:id/rooms/:roomId` | Operator/Admin | Rename a room |
 | `PATCH` | `/events/:id/rooms/:roomId/status` | Operator/Admin | Update room status (broadcasts via socket) |
 | `DELETE` | `/events/:id/rooms/:roomId` | Operator/Admin | Delete a room |
 | `GET` | `/rooms/:roomCode/setlist` | — | Room setlist + event info + `isPrivileged` flag |
@@ -212,15 +217,15 @@ Your database data is preserved in a Docker volume and will be available next ti
 
 ## Production deployment
 
-> 🚧 Production deployment is not yet configured. This section will be updated when the app is ready to deploy.
+> 🚧 In progress — being deployed to Railway.
 
-Planned approach:
-- Frontend: static build deployed to a CDN (e.g. Vercel, Netlify)
-- Backend: containerized Node server (e.g. Railway, Render, or Fly.io)
-- Database: managed Postgres (e.g. Supabase, Railway)
-- Redis: managed Redis (e.g. Upstash)
+Approach:
+- Frontend: Vite static build served by Express from the same Railway service
+- Backend: Node/Express server on Railway
+- Database: Railway-managed Postgres
+- Redis: Railway-managed Redis
 
-To build for production:
+To build for production locally:
 
 ```bash
 # Frontend
