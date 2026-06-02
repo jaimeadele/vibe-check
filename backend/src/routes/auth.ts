@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import passport from '../lib/passport';
 import prisma from '../lib/prisma';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -95,5 +95,38 @@ router.get(
     res.redirect('http://localhost:5173');
   }
 );
+
+// POST /api/auth/register-operator — Admin only, creates an Operator account
+const SLUG_BLOCKLIST = ['admin', 'api', 'auth', 'login'];
+const SLUG_PATTERN = /^[a-z0-9-]{3,40}$/;
+
+router.post('/register-operator', requireAuth, requireAdmin, async (req, res) => {
+  const { email, password, name, slug } = req.body;
+
+  if (!email || !password || !name || !slug) {
+    res.status(400).json({ error: 'email, password, name, and slug are required' });
+    return;
+  }
+
+  if (!SLUG_PATTERN.test(slug)) {
+    res.status(400).json({ error: 'Slug must be 3–40 characters: lowercase letters, digits, and hyphens only' });
+    return;
+  }
+
+  if (SLUG_BLOCKLIST.includes(slug)) {
+    res.status(400).json({ error: `'${slug}' is a reserved slug and cannot be used` });
+    return;
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await prisma.user.create({
+      data: { email, name, slug, passwordHash, role: 'OPERATOR' },
+    });
+    res.status(201).json({ id: user.id, email: user.email, name: user.name, slug: user.slug, role: user.role });
+  } catch {
+    res.status(409).json({ error: 'Email or slug already in use' });
+  }
+});
 
 export default router;

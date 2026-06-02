@@ -53,7 +53,7 @@ router.post('/:id/react', async (req: Request, res: Response) => {
 
   const song = await prisma.song.findUnique({
     where: { id: songId },
-    include: { event: { select: { roomCode: true } } },
+    include: { room: { select: { roomCode: true } } },
   });
 
   if (!song) {
@@ -91,7 +91,7 @@ router.post('/:id/react', async (req: Request, res: Response) => {
   });
 
   // Partial update — only broadcast what changed, not the whole song
-  getIO().to(song.event.roomCode).emit('song:reaction_updated', {
+  getIO().to(song.room.roomCode).emit('song:reaction_updated', {
     songId,
     vibeScore,
     reactionCount,

@@ -11,15 +11,15 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // POST /lock — acquires the identification lock and notifies the room
 router.post('/lock', async (req: Request<{ id: string }>, res: Response) => {
-  const { id: eventId } = req.params;
+  const { id: roomCode } = req.params;
 
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
-  if (!event) {
-    res.status(404).json({ error: 'Event not found' });
+  const room = await prisma.room.findUnique({ where: { roomCode } });
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
     return;
   }
 
-  const lockKey = `identify:lock:${eventId}`;
+  const lockKey = `identify:lock:${room.id}`;
   const acquired = await redis.set(lockKey, '1', 'EX', 30, 'NX');
 
   if (!acquired) {
@@ -27,42 +27,42 @@ router.post('/lock', async (req: Request<{ id: string }>, res: Response) => {
     return;
   }
 
-  getIO().to(event.roomCode).emit('identify:start');
+  getIO().to(room.roomCode).emit('identify:start');
   res.status(200).json({ ok: true });
 });
 
 // DELETE /lock — releases the lock when the user cancels
 router.delete('/lock', async (req: Request<{ id: string }>, res: Response) => {
-  const { id: eventId } = req.params;
+  const { id: roomCode } = req.params;
 
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
-  if (!event) {
-    res.status(404).json({ error: 'Event not found' });
+  const room = await prisma.room.findUnique({ where: { roomCode } });
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
     return;
   }
 
-  const lockKey = `identify:lock:${eventId}`;
+  const lockKey = `identify:lock:${room.id}`;
   await redis.del(lockKey);
-  getIO().to(event.roomCode).emit('identify:end');
+  getIO().to(room.roomCode).emit('identify:end');
   res.status(200).json({ ok: true });
 });
 
 // POST / — receives the recorded audio and runs identification
 router.post('/', upload.single('audio'), async (req: Request<{ id: string }>, res: Response) => {
-  const { id: eventId } = req.params;
+  const { id: roomCode } = req.params;
 
   if (!req.file) {
     res.status(400).json({ error: 'Audio file required' });
     return;
   }
 
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
-  if (!event) {
-    res.status(404).json({ error: 'Event not found' });
+  const room = await prisma.room.findUnique({ where: { roomCode } });
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
     return;
   }
 
-  const lockKey = `identify:lock:${eventId}`;
+  const lockKey = `identify:lock:${room.id}`;
 
   try {
     const result = await identifyAudio(req.file.buffer);
@@ -73,7 +73,7 @@ router.post('/', upload.single('audio'), async (req: Request<{ id: string }>, re
     }
 
     const mostRecent = await prisma.song.findFirst({
-      where: { eventId },
+      where: { roomId: room.id },
       orderBy: { identifiedAt: 'desc' },
     });
 
@@ -99,18 +99,18 @@ router.post('/', upload.single('audio'), async (req: Request<{ id: string }>, re
       data: {
         title: result.title,
         artist: result.artist,
-        eventId,
+        roomId: room.id,
         albumArt: spotify?.albumArt ?? null,
         previewUrl: spotify?.previewUrl ?? null,
         spotifyId: spotify?.spotifyId ?? null,
       },
     });
 
-    getIO().to(event.roomCode).emit('song:added', song);
+    getIO().to(room.roomCode).emit('song:added', song);
     res.status(201).json(song);
   } finally {
     await redis.del(lockKey);
-    getIO().to(event.roomCode).emit('identify:end');
+    getIO().to(room.roomCode).emit('identify:end');
   }
 });
 

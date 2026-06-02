@@ -8,32 +8,82 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String?
+  slug          String?  @unique
+  passwordHash  String?
+  googleId      String?  @unique
+  role          UserRole @default(USER)
+  createdAt     DateTime @default(now())
+  events        Event[]  @relation("OperatorEvents")
+  createdVenues Venue[]  @relation("VenueCreator")
+  djAssignments RoomDJ[]
+}
+
+enum UserRole {
+  USER
+  OPERATOR
+  ADMIN
+}
+
 model Venue {
-  id              String  @id @default(uuid())
-  name            String
-  address         String?
-  lat             Float
-  lng             Float
-  geoFenceRadius  Int     @default(150)
-  isActive        Boolean @default(true)
-  events          Event[]
+  id             String  @id @default(uuid())
+  name           String
+  address        String?
+  lat            Float
+  lng            Float
+  geoFenceRadius Int     @default(150)
+  isActive       Boolean @default(true)
+  createdById    String
+  createdBy      User    @relation("VenueCreator", fields: [createdById], references: [id])
+  events         Event[]
 }
 
 model Event {
-  id        String      @id @default(uuid())
+  id         String   @id @default(uuid())
+  name       String
+  startTime  DateTime
+  createdAt  DateTime @default(now())
+  operatorId String
+  venueId    String?
+  operator   User     @relation("OperatorEvents", fields: [operatorId], references: [id])
+  venue      Venue?   @relation(fields: [venueId], references: [id])
+  rooms      Room[]
+}
+
+model Room {
+  id        String     @id @default(uuid())
+  eventId   String
   name      String
-  roomCode  String      @unique
-  status    EventStatus @default(UPCOMING)
-  startTime DateTime
-  createdAt DateTime    @default(now())
-  venueId   String?
-  venue     Venue?      @relation(fields: [venueId], references: [id])
+  roomCode  String     @unique
+  status    RoomStatus @default(UPCOMING)
+  createdAt DateTime   @default(now())
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
   songs     Song[]
+  djs       RoomDJ[]
+}
+
+enum RoomStatus {
+  UPCOMING
+  ACTIVE
+  CLOSED
+}
+
+model RoomDJ {
+  id     String @id @default(uuid())
+  roomId String
+  userId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([roomId, userId])
 }
 
 model Song {
   id            String     @id @default(uuid())
-  eventId       String
+  roomId        String
   title         String
   artist        String
   albumArt      String?
@@ -42,7 +92,7 @@ model Song {
   identifiedAt  DateTime   @default(now())
   vibeScore     Int        @default(0)
   reactionCount Int        @default(0)
-  event         Event      @relation(fields: [eventId], references: [id])
+  room          Room       @relation(fields: [roomId], references: [id])
   reactions     Reaction[]
 }
 
@@ -57,26 +107,4 @@ model Reaction {
   song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
 
   @@unique([songId, voterId])
-}
-
-enum EventStatus {
-  UPCOMING
-  ACTIVE
-  CLOSED
-}
-
-model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String?
-  passwordHash String?
-  googleId     String?  @unique
-  role         UserRole @default(USER)
-  createdAt    DateTime @default(now())
-}
-
-enum UserRole {
-  USER
-  ADMIN
-  DJ
 }

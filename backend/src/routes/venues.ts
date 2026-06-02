@@ -1,11 +1,9 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import { requireAuth, requirePrivileged } from '../middleware/auth';
 
 const router = Router();
 
-// Returns the straight-line distance in metres between two lat/lng points.
-// Flat-plane approximation — accurate to well within 1m at the distances we care about (~200m).
 function flatDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const metersPerDegLat = 111_320;
   const metersPerDegLng = 111_320 * Math.cos((lat1 * Math.PI) / 180);
@@ -14,7 +12,7 @@ function flatDistance(lat1: number, lng1: number, lat2: number, lng2: number): n
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// GET /api/venues — active venues only (used by the event-creation dropdown)
+// GET /api/venues — active venues (used by event-creation dropdown)
 router.get('/', async (_req, res) => {
   try {
     const venues = await prisma.venue.findMany({
@@ -27,8 +25,8 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// GET /api/venues/all — all venues including inactive (admin management page)
-router.get('/all', requireAuth, requireAdmin, async (_req, res) => {
+// GET /api/venues/all — all venues including inactive (management view)
+router.get('/all', requireAuth, requirePrivileged, async (_req, res) => {
   try {
     const venues = await prisma.venue.findMany({ orderBy: { name: 'asc' } });
     res.json({ venues });
@@ -37,8 +35,8 @@ router.get('/all', requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
-// POST /api/venues — create a venue (admin only)
-router.post('/', requireAuth, requireAdmin, async (req, res) => {
+// POST /api/venues — create a venue (any operator or admin)
+router.post('/', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
   const { name, address, lat, lng, geoFenceRadius } = req.body;
 
   if (!name || typeof name !== 'string') {
@@ -58,6 +56,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         lat,
         lng,
         geoFenceRadius: geoFenceRadius ?? 150,
+        createdById: req.user!.userId,
       },
     });
     res.status(201).json(venue);
@@ -66,10 +65,10 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/venues/validate-location/:eventId
-// Receives the user's coordinates and returns whether they are within the venue's geofence
-router.post('/validate-location/:eventId', async (req, res) => {
-  const { eventId } = req.params;
+// POST /api/venues/validate-location/:roomCode
+// Checks whether the user's coordinates are within the room's event venue geofence
+router.post('/validate-location/:roomCode', async (req: Request, res: Response) => {
+  const { roomCode } = req.params;
   const { lat, lng } = req.body;
 
   if (typeof lat !== 'number' || typeof lng !== 'number') {
@@ -78,34 +77,31 @@ router.post('/validate-location/:eventId', async (req, res) => {
   }
 
   try {
-    const event = await prisma.event.findUnique({
-      where: { id: eventId },
-      include: { venue: true },
+    const room = await prisma.room.findUnique({
+      where: { roomCode },
+      include: { event: { include: { venue: true } } },
     });
 
-    if (!event) {
-      res.status(404).json({ error: 'Event not found' });
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
       return;
     }
 
-    // If the event has no venue attached, we can't geofence — allow access
-    if (!event.venue) {
+    if (!room.event.venue) {
       res.json({ withinFence: true });
       return;
     }
 
-    const distance = flatDistance(lat, lng, event.venue.lat, event.venue.lng);
-    const withinFence = distance <= event.venue.geoFenceRadius;
-
+    const distance = flatDistance(lat, lng, room.event.venue.lat, room.event.venue.lng);
+    const withinFence = distance <= room.event.venue.geoFenceRadius;
     res.json({ withinFence, distance: Math.round(distance) });
   } catch {
     res.status(500).json({ error: 'Failed to validate location' });
   }
 });
 
-// PATCH /api/venues/:id — edit a venue's fields (admin only)
-// Only sends what changed — any omitted field is left as-is
-router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
+// PATCH /api/venues/:id — edit venue fields (creator or admin only)
+router.patch('/:id', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { name, address, lat, lng, geoFenceRadius } = req.body;
 
@@ -123,7 +119,13 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 
   try {
-    const venue = await prisma.venue.update({
+    const venue = await prisma.venue.findUnique({ where: { id } });
+    if (!venue) { res.status(404).json({ error: 'Venue not found' }); return; }
+    if (req.user!.role !== 'ADMIN' && venue.createdById !== req.user!.userId) {
+      res.status(403).json({ error: 'Not authorized' }); return;
+    }
+
+    const updated = await prisma.venue.update({
       where: { id },
       data: {
         ...(name !== undefined && { name }),
@@ -133,35 +135,41 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
         ...(geoFenceRadius !== undefined && { geoFenceRadius }),
       },
     });
-    res.json(venue);
+    res.json(updated);
   } catch {
     res.status(500).json({ error: 'Failed to update venue' });
   }
 });
 
-// PATCH /api/venues/:id/restore — undo a soft delete (admin only)
-router.patch('/:id/restore', requireAuth, requireAdmin, async (req, res) => {
+// PATCH /api/venues/:id/restore — undo a soft delete (creator or admin only)
+router.patch('/:id/restore', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const venue = await prisma.venue.update({
-      where: { id },
-      data: { isActive: true },
-    });
-    res.json(venue);
+    const venue = await prisma.venue.findUnique({ where: { id } });
+    if (!venue) { res.status(404).json({ error: 'Venue not found' }); return; }
+    if (req.user!.role !== 'ADMIN' && venue.createdById !== req.user!.userId) {
+      res.status(403).json({ error: 'Not authorized' }); return;
+    }
+
+    const updated = await prisma.venue.update({ where: { id }, data: { isActive: true } });
+    res.json(updated);
   } catch {
     res.status(500).json({ error: 'Failed to restore venue' });
   }
 });
 
-// DELETE /api/venues/:id — soft delete (sets isActive: false, keeps the row) (admin only)
-router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+// DELETE /api/venues/:id — soft delete (creator or admin only)
+router.delete('/:id', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const venue = await prisma.venue.update({
-      where: { id },
-      data: { isActive: false },
-    });
-    res.json(venue);
+    const venue = await prisma.venue.findUnique({ where: { id } });
+    if (!venue) { res.status(404).json({ error: 'Venue not found' }); return; }
+    if (req.user!.role !== 'ADMIN' && venue.createdById !== req.user!.userId) {
+      res.status(403).json({ error: 'Not authorized' }); return;
+    }
+
+    const updated = await prisma.venue.update({ where: { id }, data: { isActive: false } });
+    res.json(updated);
   } catch {
     res.status(500).json({ error: 'Failed to deactivate venue' });
   }

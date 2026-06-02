@@ -31,6 +31,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+// Master admin only — manages operator accounts
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.user?.role !== 'ADMIN') {
     res.status(403).json({ error: 'Admin access required' });
@@ -39,10 +40,32 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-export function requirePrivileged(req: Request, res: Response, next: NextFunction) {
-  if (req.user?.role !== 'ADMIN' && req.user?.role !== 'DJ') {
-    res.status(403).json({ error: 'DJ or admin access required' });
+// Operator only — runs events and venues
+export function requireOperator(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== 'OPERATOR') {
+    res.status(403).json({ error: 'Operator access required' });
     return;
+  }
+  next();
+}
+
+// Operator or master Admin
+export function requirePrivileged(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== 'OPERATOR' && req.user?.role !== 'ADMIN') {
+    res.status(403).json({ error: 'Operator or admin access required' });
+    return;
+  }
+  next();
+}
+
+// Populates req.user if a valid JWT cookie is present — does not block unauthenticated requests
+export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  const token = req.cookies?.token;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+      req.user = payload;
+    } catch { /* invalid token — leave req.user undefined */ }
   }
   next();
 }

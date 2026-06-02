@@ -5,9 +5,11 @@ import passport from './lib/passport';
 import eventsRouter from './routes/events';
 import authRouter from './routes/auth';
 import identifyRouter from './routes/identify';
+import roomsRouter from './routes/rooms';
 import spotifyRouter from './routes/spotify';
 import venuesRouter from './routes/venues';
 import songsRouter from './routes/songs';
+import operatorsRouter from './routes/operators';
 
 const app = express();
 
@@ -44,9 +46,11 @@ app.get('/api/health', (_req, res) => {
 // Mount the events router at /api/events
 app.use('/api/auth', authRouter);
 app.use('/api/events', eventsRouter);
-app.use('/api/events/:id/identify', identifyRouter);
+app.use('/api/rooms', roomsRouter);
+app.use('/api/rooms/:id/identify', identifyRouter);
 app.use('/api/spotify', spotifyRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/songs', songsRouter);
+app.use('/api/operators', operatorsRouter);
 
 export default app;
