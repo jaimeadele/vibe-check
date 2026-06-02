@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useRoomSocket } from '../hooks/useRoomSocket';
 import IdentifyButton from './IdentifyButton';
 import EmojiReaction from './EmojiReaction';
@@ -36,17 +37,23 @@ interface Room {
   name: string;
   roomCode: string;
   status: 'UPCOMING' | 'ACTIVE' | 'CLOSED';
+  djs: { id: string; name: string }[];
+}
+
+interface Event {
+  id: string;
+  name: string;
   startTime: string;
-  createdAt: string;
-  venueId: string | null;
+  operatorId: string;
   venue: VenueSummary | null;
 }
 
 interface Props {
   room: Room;
-  onBack: () => void;
+  event: Event;
+  initialSongs: Song[];
   isPrivileged: boolean;
-  onRoomUpdate: (roomId: string, updates: Partial<Pick<Room, 'status' | 'startTime'>>) => void;
+  slug: string;
 }
 
 function formatStartTime(iso: string) {
@@ -64,28 +71,25 @@ function toInputValue(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
-  const [songs, setSongs] = useState<Song[]>([]);
+function RoomView({ room, event, initialSongs, isPrivileged, slug }: Props) {
+  const navigate = useNavigate();
+
+  const [songs, setSongs] = useState<Song[]>(initialSongs);
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SpotifySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [status, setStatus] = useState(room.status);
-  const [startTime, setStartTime] = useState(room.startTime);
+  const [startTime, setStartTime] = useState(event.startTime);
   const [editingStartTime, setEditingStartTime] = useState(false);
-  const [startTimeInput, setStartTimeInput] = useState(toInputValue(room.startTime));
+  const [startTimeInput, setStartTimeInput] = useState(toInputValue(event.startTime));
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
-  const [venue, setVenue] = useState<VenueSummary | null>(room.venue);
+  const [venue, setVenue] = useState<VenueSummary | null>(event.venue);
   const [editingVenue, setEditingVenue] = useState(false);
   const [venueOptions, setVenueOptions] = useState<VenueSummary[]>([]);
-  const [selectedVenueId, setSelectedVenueId] = useState(room.venue?.id ?? '');
+  const [selectedVenueId, setSelectedVenueId] = useState(event.venue?.id ?? '');
   const [savingVenue, setSavingVenue] = useState(false);
-  useEffect(() => {
-    fetch(`/api/events/${room.id}/setlist`)
-      .then((res) => res.json())
-      .then((data) => setSongs(data.songs));
-  }, [room.id]);
 
   const { isIdentifying } = useRoomSocket(room.roomCode, (song) => {
     setSongs((prev) => [{ ...song, breakdown: EMPTY_BREAKDOWN }, ...prev]);
@@ -93,7 +97,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
     setSongs((prev) => prev.filter((s) => s.id !== songId));
   }, (newStatus) => {
     setStatus(newStatus as Room['status']);
-    onRoomUpdate(room.id, { status: newStatus as Room['status'] });
   }, ({ songId, vibeScore, reactionCount, breakdown }) => {
     setSongs((prev) =>
       prev.map((s) => s.id === songId ? { ...s, vibeScore, reactionCount, breakdown } : s)
@@ -102,7 +105,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
 
   function handleAddSong(e: React.FormEvent) {
     e.preventDefault();
-    fetch(`/api/events/${room.id}/songs`, {
+    fetch(`/api/events/${event.id}/rooms/${room.id}/songs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -129,7 +132,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   }
 
   async function handlePickSpotifyResult(result: SpotifySearchResult) {
-    await fetch(`/api/events/${room.id}/songs`, {
+    await fetch(`/api/events/${event.id}/rooms/${room.id}/songs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -146,7 +149,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   }
 
   async function handleStatusChange(newStatus: string) {
-    const res = await fetch(`/api/events/${room.id}/status`, {
+    const res = await fetch(`/api/events/${event.id}/rooms/${room.id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
@@ -154,12 +157,11 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
     });
     if (res.ok) {
       setStatus(newStatus as Room['status']);
-      onRoomUpdate(room.id, { status: newStatus as Room['status'] });
     }
   }
 
   async function handleSaveStartTime() {
-    const res = await fetch(`/api/events/${room.id}/startTime`, {
+    const res = await fetch(`/api/events/${event.id}/startTime`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ startTime: new Date(startTimeInput).toISOString() }),
@@ -170,7 +172,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
       setStartTime(updated.startTime);
       setStartTimeInput(toInputValue(updated.startTime));
       setEditingStartTime(false);
-      onRoomUpdate(room.id, { startTime: updated.startTime });
     }
   }
 
@@ -185,7 +186,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
   async function handleSaveVenue() {
     setSavingVenue(true);
     try {
-      const res = await fetch(`/api/events/${room.id}/venue`, {
+      const res = await fetch(`/api/events/${event.id}/venue`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -203,7 +204,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
 
   function handleRemoveSong(songId: string) {
     if (!window.confirm('Remove this song from the setlist?')) return;
-    fetch(`/api/events/${room.id}/songs/${songId}`, {
+    fetch(`/api/events/${event.id}/rooms/${room.id}/songs/${songId}`, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -215,7 +216,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
         {/* Header */}
         <div className='flex items-center gap-4 mb-8'>
           <button
-            onClick={onBack}
+            onClick={() => navigate(`/${slug}`)}
             className='text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-xl transition-colors text-sm cursor-pointer shrink-0'
           >
             ← Back
@@ -292,7 +293,7 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
               </div>
             )}
 
-            {/* Venue — display for everyone, editable by admins */}
+            {/* Venue */}
             {editingVenue ? (
               <div className='flex items-center gap-2 mt-1'>
                 <div className='relative'>
@@ -333,9 +334,9 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
           </div>
         </div>
 
-        {/* Identify button — geofence checked on every tap for non-privileged users */}
+        {/* Identify button */}
         <IdentifyButton
-          eventId={room.id}
+          roomCode={room.roomCode}
           roomLocked={isIdentifying}
           eventActive={status === 'ACTIVE'}
           venueId={isPrivileged ? null : venue?.id ?? null}
@@ -345,7 +346,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
         {isPrivileged && (
           <div className='mt-4 flex flex-col gap-4'>
 
-            {/* Spotify search */}
             <form onSubmit={handleSpotifySearch} className='flex gap-2'>
               <input
                 value={searchQuery}
@@ -362,7 +362,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
               </button>
             </form>
 
-            {/* Search results */}
             {searchResults.length > 0 && (
               <ul className='flex flex-col gap-2'>
                 {searchResults.map((result) => (
@@ -387,7 +386,6 @@ function RoomView({ room, onBack, isPrivileged, onRoomUpdate }: Props) {
               </ul>
             )}
 
-            {/* Manual fallback */}
             <details className='group'>
               <summary className='text-xs text-gray-500 hover:text-gray-300 cursor-pointer transition-colors select-none'>
                 Add manually instead

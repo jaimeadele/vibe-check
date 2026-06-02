@@ -172,7 +172,6 @@ All routes are prefixed with `/api`.
 | `POST` | `/auth/register-operator` | Admin | Create an Operator account with slug |
 | `GET` | `/operators` | — | List all operators with active event counts |
 | `GET` | `/operators/:slug` | — | Operator profile + events + rooms |
-| `GET` | `/events` | Operator/Admin | List caller's events (admin sees all) |
 | `POST` | `/events` | Operator | Create an event |
 | `PATCH` | `/events/:id/startTime` | Operator/Admin | Update event start time |
 | `PATCH` | `/events/:id/venue` | Operator/Admin | Assign or clear the event venue |
@@ -180,14 +179,12 @@ All routes are prefixed with `/api`.
 | `POST` | `/events/:id/rooms` | Operator/Admin | Create a room within the event |
 | `PATCH` | `/events/:id/rooms/:roomId/status` | Operator/Admin | Update room status (broadcasts via socket) |
 | `DELETE` | `/events/:id/rooms/:roomId` | Operator/Admin | Delete a room |
-| `GET` | `/events/:id/rooms/:roomId/setlist` | — | Room setlist + `isPrivileged` flag |
+| `GET` | `/rooms/:roomCode/setlist` | — | Room setlist + event info + `isPrivileged` flag |
 | `POST` | `/events/:id/rooms/:roomId/songs` | Operator/DJ | Add a song |
 | `DELETE` | `/events/:id/rooms/:roomId/songs/:songId` | Operator/DJ | Remove a song |
-| `POST` | `/events/:id/rooms/:roomId/djs` | Operator/Admin | Assign a DJ by email |
-| `DELETE` | `/events/:id/rooms/:roomId/djs/:userId` | Operator/Admin | Remove a DJ |
-| `POST` | `/rooms/:id/identify/lock` | — | Acquire identification lock |
-| `DELETE` | `/rooms/:id/identify/lock` | — | Release identification lock |
-| `POST` | `/rooms/:id/identify` | — | Submit audio for song identification |
+| `POST` | `/rooms/:roomCode/identify/lock` | — | Acquire identification lock |
+| `DELETE` | `/rooms/:roomCode/identify/lock` | — | Release identification lock |
+| `POST` | `/rooms/:roomCode/identify` | — | Submit audio for song identification |
 | `GET` | `/venues` | — | List active venues |
 | `GET` | `/venues/all` | Operator/Admin | All venues including inactive |
 | `POST` | `/venues` | Operator/Admin | Create a venue (stores createdById) |

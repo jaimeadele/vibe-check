@@ -10,7 +10,7 @@ interface Song {
 }
 
 interface Props {
-  eventId: string;
+  roomCode: string;
   roomLocked: boolean;
   eventActive: boolean;
   venueId: string | null;
@@ -25,7 +25,7 @@ function getPosition(): Promise<GeolocationPosition> {
   );
 }
 
-function IdentifyButton({ eventId, roomLocked, eventActive, venueId }: Props) {
+function IdentifyButton({ roomCode, roomLocked, eventActive, venueId }: Props) {
   const [state, setState] = useState<IdentifyState>('idle');
   const [match, setMatch] = useState<Song | null>(null);
   const { capture, cancel } = useAudioCapture();
@@ -34,7 +34,7 @@ function IdentifyButton({ eventId, roomLocked, eventActive, venueId }: Props) {
     cancel();
     setState('idle');
     // Release the lock so others can identify — best-effort, don't block UI
-    await fetch(`/api/events/${eventId}/identify/lock`, {
+    await fetch(`/api/rooms/${roomCode}/identify/lock`, {
       method: 'DELETE',
       credentials: 'include',
     }).catch(() => {});
@@ -54,7 +54,7 @@ function IdentifyButton({ eventId, roomLocked, eventActive, venueId }: Props) {
       setState('checking_location');
       try {
         const pos = await getPosition();
-        const geoRes = await fetch(`/api/venues/validate-location/${eventId}`, {
+        const geoRes = await fetch(`/api/venues/validate-location/${roomCode}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -74,7 +74,7 @@ function IdentifyButton({ eventId, roomLocked, eventActive, venueId }: Props) {
     }
 
     try {
-      const lockRes = await fetch(`/api/events/${eventId}/identify/lock`, {
+      const lockRes = await fetch(`/api/rooms/${roomCode}/identify/lock`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -92,7 +92,7 @@ function IdentifyButton({ eventId, roomLocked, eventActive, venueId }: Props) {
       const form = new FormData();
       form.append('audio', blob, 'sample.webm');
 
-      const res = await fetch(`/api/events/${eventId}/identify`, {
+      const res = await fetch(`/api/rooms/${roomCode}/identify`, {
         method: 'POST',
         body: form,
         credentials: 'include',

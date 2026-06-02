@@ -1,39 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { getIO } from '../lib/socket';
-import { requireAuth, requireOperator, requirePrivileged, optionalAuth } from '../middleware/auth';
+import { requireAuth, requireOperator, requirePrivileged } from '../middleware/auth';
 
 const router = Router();
 
 function generateRoomCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
-
-// GET /api/events — operator sees their own events; admin sees all
-router.get('/', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
-  try {
-    const where = req.user!.role === 'ADMIN' ? {} : { operatorId: req.user!.userId };
-    const events = await prisma.event.findMany({
-      where,
-      orderBy: { startTime: 'desc' },
-      include: {
-        venue: { select: { id: true, name: true, address: true } },
-        rooms: {
-          select: {
-            id: true,
-            name: true,
-            roomCode: true,
-            status: true,
-            djs: { select: { user: { select: { id: true, name: true } } } },
-          },
-        },
-      },
-    });
-    res.json({ events });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch events' });
-  }
-});
 
 // POST /api/events — create an event (operator only)
 router.post('/', requireAuth, requireOperator, async (req: Request, res: Response) => {
@@ -213,64 +187,6 @@ router.delete('/:id/rooms/:roomId', requireAuth, requirePrivileged, async (req: 
   }
 });
 
-// GET /api/events/:id/rooms/:roomId/setlist
-router.get('/:id/rooms/:roomId/setlist', optionalAuth, async (req: Request, res: Response) => {
-  try {
-    const room = await prisma.room.findUnique({
-      where: { id: req.params.roomId },
-      include: {
-        songs: {
-          orderBy: { identifiedAt: 'desc' },
-          include: { reactions: { select: { emoji: true } } },
-        },
-        event: {
-          select: {
-            operatorId: true,
-            name: true,
-            startTime: true,
-            venue: { select: { id: true, name: true, address: true } },
-          },
-        },
-        djs: { select: { user: { select: { id: true, name: true } }, userId: true } },
-      },
-    });
-
-    if (!room || room.eventId !== req.params.id) {
-      res.status(404).json({ error: 'Room not found' }); return;
-    }
-
-    const userId = req.user?.userId;
-    const isPrivileged = !!(userId && (
-      req.user?.role === 'ADMIN' ||
-      room.event.operatorId === userId ||
-      room.djs.some(dj => dj.userId === userId)
-    ));
-
-    const songs = room.songs.map(({ reactions, ...song }) => {
-      const breakdown: Record<string, number> = { '🔥': 0, '❤️': 0, '🥱': 0, '🤮': 0 };
-      for (const r of reactions) {
-        if (r.emoji in breakdown) breakdown[r.emoji]++;
-      }
-      return { ...song, breakdown };
-    });
-
-    res.json({
-      room: {
-        id: room.id,
-        name: room.name,
-        roomCode: room.roomCode,
-        status: room.status,
-        djs: room.djs.map(d => d.user),
-        event: room.event,
-      },
-      isPrivileged,
-      songs,
-    });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch setlist' });
-  }
-});
-
 // POST /api/events/:id/rooms/:roomId/songs
 router.post('/:id/rooms/:roomId/songs', requireAuth, async (req: Request, res: Response) => {
   const { title, artist, albumArt, previewUrl, spotifyId } = req.body;
@@ -350,63 +266,6 @@ router.delete('/:id/rooms/:roomId/songs/:songId', requireAuth, async (req: Reque
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Failed to remove song' });
-  }
-});
-
-// POST /api/events/:id/rooms/:roomId/djs — assign a user as DJ (by email)
-router.post('/:id/rooms/:roomId/djs', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
-  const { email } = req.body;
-
-  if (!email) {
-    res.status(400).json({ error: 'email is required' });
-    return;
-  }
-
-  try {
-    const room = await prisma.room.findUnique({
-      where: { id: req.params.roomId },
-      include: { event: { select: { operatorId: true } } },
-    });
-    if (!room || room.eventId !== req.params.id) {
-      res.status(404).json({ error: 'Room not found' }); return;
-    }
-    if (req.user!.role !== 'ADMIN' && room.event.operatorId !== req.user!.userId) {
-      res.status(403).json({ error: 'Not authorized' }); return;
-    }
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
-
-    const assignment = await prisma.roomDJ.create({
-      data: { roomId: req.params.roomId, userId: user.id },
-      include: { user: { select: { id: true, name: true, email: true } } },
-    });
-    res.status(201).json(assignment);
-  } catch {
-    res.status(409).json({ error: 'User is already a DJ for this room' });
-  }
-});
-
-// DELETE /api/events/:id/rooms/:roomId/djs/:userId
-router.delete('/:id/rooms/:roomId/djs/:userId', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
-  try {
-    const room = await prisma.room.findUnique({
-      where: { id: req.params.roomId },
-      include: { event: { select: { operatorId: true } } },
-    });
-    if (!room || room.eventId !== req.params.id) {
-      res.status(404).json({ error: 'Room not found' }); return;
-    }
-    if (req.user!.role !== 'ADMIN' && room.event.operatorId !== req.user!.userId) {
-      res.status(403).json({ error: 'Not authorized' }); return;
-    }
-
-    await prisma.roomDJ.delete({
-      where: { roomId_userId: { roomId: req.params.roomId, userId: req.params.userId } },
-    });
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Failed to remove DJ' });
   }
 });
 
