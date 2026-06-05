@@ -5,6 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   clearScreen: false,
   plugins: [react(), tailwindcss()],
+  build: {
+    outDir: '../backend/dist/public',
+    emptyOutDir: true,
+  },
   server: {
     // Bind to all network interfaces so ngrok can reach this dev server
     host: true,
