@@ -1,7 +1,5 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm install --prefix frontend && npm run build --prefix frontend && cd backend && npm install && npx prisma generate && npm run build"
+builder = "dockerfile"
 
 [deploy]
-startCommand = "cd backend && npm run start"
 healthcheckPath = "/api/health"
