@@ -217,21 +217,24 @@ Your database data is preserved in a Docker volume and will be available next ti
 
 ## Production deployment
 
-> 🚧 In progress — being deployed to Railway.
+Deployed to [Railway](https://railway.app). The frontend Vite build is served as static files by the Express backend — a single Railway service handles both.
 
-Approach:
-- Frontend: Vite static build served by Express from the same Railway service
-- Backend: Node/Express server on Railway
-- Database: Railway-managed Postgres
-- Redis: Railway-managed Redis
+| Component | Provider |
+|-----------|----------|
+| App server | Railway (Node/Express) |
+| Database | Railway-managed PostgreSQL |
+| Cache | Railway-managed Redis |
+| SSL | Automatic via Let's Encrypt |
 
-To build for production locally:
+**How deploys work:** Every push to `main` triggers an automatic redeploy. Railway runs the build command (installs deps, builds the frontend, compiles the backend TypeScript), then starts the server with `npx prisma migrate deploy && node dist/index.js` — migrations run automatically on every deploy before the server comes up.
+
+**To build locally for testing:**
 
 ```bash
-# Frontend
+# Build frontend
 npm run build --prefix frontend
 
-# Backend
+# Build + start backend (serves the frontend build too)
 npm run build --prefix backend
 npm run start --prefix backend
 ```

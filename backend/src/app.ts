@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 import passport from './lib/passport';
 import eventsRouter from './routes/events';
 import authRouter from './routes/auth';
@@ -18,13 +19,16 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(passport.initialize());
 
-// Allow requests from the frontend dev server and ngrok tunnels (for mobile testing)
-const allowedOrigins = [
+const allowedOrigins: (string | RegExp)[] = [
   'http://localhost:5173',
   /https:\/\/.*\.ngrok-free\.app$/,  // ngrok free tier domains
   /https:\/\/.*\.ngrok-free\.dev$/,  // ngrok free tier .dev domains
   /https:\/\/.*\.ngrok\.io$/,        // ngrok paid/legacy domains
 ];
+
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL);
+}
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -52,5 +56,10 @@ app.use('/api/spotify', spotifyRouter);
 app.use('/api/venues', venuesRouter);
 app.use('/api/songs', songsRouter);
 app.use('/api/operators', operatorsRouter);
+
+app.use(express.static(path.join(__dirname, '../../frontend/dist')));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+});
 
 export default app;
