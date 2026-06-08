@@ -158,20 +158,25 @@ router.patch('/:id/restore', requireAuth, requirePrivileged, async (req: Request
   }
 });
 
-// DELETE /api/venues/:id — soft delete (creator or admin only)
+// DELETE /api/venues/:id — hard delete if no events, soft delete otherwise
 router.delete('/:id', requireAuth, requirePrivileged, async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const venue = await prisma.venue.findUnique({ where: { id } });
+    const venue = await prisma.venue.findUnique({ where: { id }, include: { _count: { select: { events: true } } } });
     if (!venue) { res.status(404).json({ error: 'Venue not found' }); return; }
     if (req.user!.role !== 'ADMIN' && venue.createdById !== req.user!.userId) {
       res.status(403).json({ error: 'Not authorized' }); return;
     }
 
-    const updated = await prisma.venue.update({ where: { id }, data: { isActive: false } });
-    res.json(updated);
+    if (venue._count.events === 0) {
+      await prisma.venue.delete({ where: { id } });
+      res.json({ deleted: true, id });
+    } else {
+      const updated = await prisma.venue.update({ where: { id }, data: { isActive: false } });
+      res.json({ deleted: false, venue: updated });
+    }
   } catch {
-    res.status(500).json({ error: 'Failed to deactivate venue' });
+    res.status(500).json({ error: 'Failed to remove venue' });
   }
 });
 

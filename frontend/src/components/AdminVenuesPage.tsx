@@ -91,12 +91,17 @@ export default function AdminVenuesPanel() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`Remove "${name}" from the venue list?\n\nThe venue won't be deleted — any events linked to it are safe. You can restore it any time.`)) return;
+    if (!window.confirm(`Delete "${name}"?\n\nIf this venue has no events linked to it, it will be permanently deleted. Otherwise it will be hidden and can be restored.`)) return;
     const res = await fetch(`/api/venues/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.ok) {
-      const updated: Venue = await res.json();
-      setVenues(prev => prev.map(v => (v.id === id ? updated : v)));
-      if (editingId === id) setEditingId(null);
+      const data = await res.json();
+      if (data.deleted) {
+        setVenues(prev => prev.filter(v => v.id !== id));
+        if (editingId === id) setEditingId(null);
+      } else {
+        setVenues(prev => prev.map(v => (v.id === id ? data.venue : v)));
+        if (editingId === id) setEditingId(null);
+      }
     }
   }
 
