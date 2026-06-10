@@ -26,6 +26,9 @@ interface Event {
   startTime: string;
   venue: { id: string; name: string; address: string | null } | null;
   rooms: Room[];
+  recurrenceFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | null;
+  recurrenceDayOfWeek: number | null;
+  recurrenceDayPosition: number | null;
 }
 
 interface Operator {
@@ -33,6 +36,70 @@ interface Operator {
   name: string;
   slug: string;
   events: Event[];
+}
+
+function getDayPosition(date: Date): number {
+  const day = date.getDay();
+  const month = date.getMonth();
+  const year = date.getFullYear();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  let total = 0;
+  let occurrence = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    if (new Date(year, month, d).getDay() === day) {
+      total++;
+      if (d <= date.getDate()) occurrence++;
+    }
+  }
+  return occurrence === total ? -1 : occurrence;
+}
+
+function calcNextOccurrence(
+  freq: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+  dayOfWeek: number,
+  dayPosition: number | null,
+  prevStartTime: string,
+): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const prev = new Date(prevStartTime);
+
+  if (freq === 'WEEKLY') {
+    const result = new Date(prev);
+    result.setDate(prev.getDate() + 7);
+    return `${result.getFullYear()}-${pad(result.getMonth() + 1)}-${pad(result.getDate())}T21:00`;
+  }
+
+  if (freq === 'BIWEEKLY') {
+    const result = new Date(prev);
+    result.setDate(prev.getDate() + 14);
+    return `${result.getFullYear()}-${pad(result.getMonth() + 1)}-${pad(result.getDate())}T21:00`;
+  }
+
+  // MONTHLY — find the Nth (or last) occurrence of dayOfWeek in the month after prev
+  const year = prev.getMonth() === 11 ? prev.getFullYear() + 1 : prev.getFullYear();
+  const month = (prev.getMonth() + 1) % 12;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const occurrences: number[] = [];
+  for (let d = 1; d <= lastDay; d++) {
+    if (new Date(year, month, d).getDay() === dayOfWeek) occurrences.push(d);
+  }
+  const targetDay = dayPosition === -1
+    ? occurrences[occurrences.length - 1]
+    : occurrences[(dayPosition ?? 1) - 1];
+  return `${year}-${pad(month + 1)}-${pad(targetDay)}T21:00`;
+}
+
+function describeRecurrence(freq: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY', date: Date, dayPosition: number): string {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayName = days[date.getDay()];
+  if (freq === 'WEEKLY') return `Every ${dayName}`;
+  if (freq === 'BIWEEKLY') return `Every other ${dayName}`;
+  const posLabel = dayPosition === -1 ? 'last'
+    : dayPosition === 1 ? 'first'
+    : dayPosition === 2 ? 'second'
+    : dayPosition === 3 ? 'third'
+    : 'fourth';
+  return `The ${posLabel} ${dayName} of each month`;
 }
 
 function primaryStatus(event: Event): 'ACTIVE' | 'UPCOMING' | 'CLOSED' {
@@ -91,6 +158,9 @@ export default function OperatorPage() {
 
   // Status dropdown (one room at a time)
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null);
+
+  // Recurrence
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | null>(null);
 
   useEffect(() => {
     fetch(`/api/operators/${slug}`)
@@ -151,10 +221,11 @@ export default function OperatorPage() {
     setVenueSearch(''); setVenueDropdownOpen(false);
     setRoomMode('single');
     setMultiRoomNames(['', '']);
+    setRecurrenceFrequency(null);
     setShowCreateEvent(false);
   }
 
-  async function handleCreateEvent(e: React.FormEvent) {
+  async function handleCreateEvent(e: { preventDefault(): void }) {
     e.preventDefault();
     setCreatingEvent(true);
     try {
@@ -165,6 +236,13 @@ export default function OperatorPage() {
       };
       if (roomMode === 'multi') {
         body.rooms = multiRoomNames.map(r => r.trim()).filter(Boolean);
+      }
+      if (recurrenceFrequency) {
+        body.recurrenceFrequency = recurrenceFrequency;
+        body.recurrenceDayOfWeek = new Date(newEventTime).getDay();
+        if (recurrenceFrequency === 'MONTHLY') {
+          body.recurrenceDayPosition = getDayPosition(new Date(newEventTime));
+        }
       }
       const res = await fetch('/api/events', {
         method: 'POST',
@@ -179,6 +257,31 @@ export default function OperatorPage() {
     } finally {
       setCreatingEvent(false);
     }
+  }
+
+  function handleScheduleNext(e: React.MouseEvent, event: Event) {
+    e.stopPropagation();
+    const nextDate = calcNextOccurrence(
+      event.recurrenceFrequency!,
+      event.recurrenceDayOfWeek!,
+      event.recurrenceDayPosition,
+      event.startTime,
+    );
+    setNewEventName(event.name);
+    const venueStillActive = venues.some(v => v.id === event.venue?.id);
+    setNewEventVenueId(venueStillActive ? (event.venue?.id ?? '') : '');
+    setVenueSearch(venueStillActive ? (event.venue?.name ?? '') : '');
+    setNewEventTime(nextDate);
+    setRecurrenceFrequency(event.recurrenceFrequency);
+    if (event.rooms.length > 1) {
+      setRoomMode('multi');
+      setMultiRoomNames(event.rooms.map(r => r.name));
+    } else {
+      setRoomMode('single');
+      setMultiRoomNames(['', '']);
+    }
+    setShowCreateEvent(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function handleDeleteEvent(e: React.MouseEvent, eventId: string) {
@@ -426,12 +529,22 @@ export default function OperatorPage() {
                 </div>
               )}
 
-              <button
-                onClick={() => openAddRoomModal(event)}
-                className='text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer'
-              >
-                + Add room
-              </button>
+              <div className='flex gap-2 flex-wrap'>
+                <button
+                  onClick={() => openAddRoomModal(event)}
+                  className='text-xs font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer'
+                >
+                  + Add room
+                </button>
+                {event.recurrenceFrequency && (
+                  <button
+                    onClick={e => handleScheduleNext(e, event)}
+                    className='text-xs font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer'
+                  >
+                    ↻ Schedule next
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -580,6 +693,37 @@ export default function OperatorPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Recurrence toggle */}
+                <div className='flex flex-col gap-2'>
+                  <label className='flex items-center gap-2 cursor-pointer w-fit'>
+                    <input
+                      type='checkbox'
+                      checked={recurrenceFrequency !== null}
+                      onChange={e => setRecurrenceFrequency(e.target.checked ? 'WEEKLY' : null)}
+                      className='w-4 h-4 rounded accent-accent cursor-pointer'
+                    />
+                    <span className='text-sm text-gray-400'>Repeat this event</span>
+                  </label>
+                  {recurrenceFrequency !== null && (
+                    <div className='flex flex-col gap-2 pl-6'>
+                      <select
+                        value={recurrenceFrequency}
+                        onChange={e => setRecurrenceFrequency(e.target.value as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY')}
+                        className='bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-accent transition-colors w-fit'
+                      >
+                        <option value='WEEKLY'>Every week</option>
+                        <option value='BIWEEKLY'>Every 2 weeks</option>
+                        <option value='MONTHLY'>Every month</option>
+                      </select>
+                      {newEventTime && (
+                        <p className='text-xs text-gray-500'>
+                          {describeRecurrence(recurrenceFrequency, new Date(newEventTime), getDayPosition(new Date(newEventTime)))}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className='flex gap-2'>
                   <button

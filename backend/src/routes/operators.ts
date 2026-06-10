@@ -51,6 +51,9 @@ router.get('/:slug', async (req, res) => {
           name: true,
           startTime: true,
           venueId: true,
+          recurrenceFrequency: true,
+          recurrenceDayOfWeek: true,
+          recurrenceDayPosition: true,
           venue: { select: { id: true, name: true, address: true } },
           rooms: {
             select: {

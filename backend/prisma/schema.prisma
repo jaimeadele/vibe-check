@@ -42,15 +42,24 @@ model Venue {
 }
 
 model Event {
-  id         String   @id @default(uuid())
-  name       String
-  startTime  DateTime
-  createdAt  DateTime @default(now())
-  operatorId String
-  venueId    String?
-  operator   User     @relation("OperatorEvents", fields: [operatorId], references: [id])
-  venue      Venue?   @relation(fields: [venueId], references: [id])
-  rooms      Room[]
+  id                   String              @id @default(uuid())
+  name                 String
+  startTime            DateTime
+  createdAt            DateTime            @default(now())
+  operatorId           String
+  venueId              String?
+  recurrenceFrequency  RecurrenceFrequency?
+  recurrenceDayOfWeek  Int?
+  recurrenceDayPosition Int?
+  operator             User                @relation("OperatorEvents", fields: [operatorId], references: [id])
+  venue                Venue?              @relation(fields: [venueId], references: [id])
+  rooms                Room[]
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
 }
 
 model Room {

@@ -12,7 +12,7 @@ function generateRoomCode(): string {
 // POST /api/events — create an event (operator only)
 // Accepts optional `rooms: string[]`; defaults to one room named after the event.
 router.post('/', requireAuth, requireOperator, async (req: Request, res: Response) => {
-  const { name, startTime, venueId, rooms: roomNames } = req.body;
+  const { name, startTime, venueId, rooms: roomNames, recurrenceFrequency, recurrenceDayOfWeek, recurrenceDayPosition } = req.body;
 
   if (!name || typeof name !== 'string') {
     res.status(400).json({ error: 'name is required' });
@@ -30,6 +30,9 @@ router.post('/', requireAuth, requireOperator, async (req: Request, res: Respons
         startTime: new Date(startTime),
         operatorId: req.user!.userId,
         venueId: venueId ?? null,
+        recurrenceFrequency: recurrenceFrequency ?? null,
+        recurrenceDayOfWeek: recurrenceDayOfWeek ?? null,
+        recurrenceDayPosition: recurrenceDayPosition ?? null,
       },
     });
 
