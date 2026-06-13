@@ -102,10 +102,10 @@ function describeRecurrence(freq: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY', date: Date,
   return `The ${posLabel} ${dayName} of each month`;
 }
 
-function defaultEventTime(): string {
+function defaultEventDate(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function primaryStatus(event: Event): 'ACTIVE' | 'UPCOMING' | 'CLOSED' {
@@ -137,7 +137,10 @@ export default function OperatorPage() {
   // Create event form
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [newEventName, setNewEventName] = useState('');
-  const [newEventTime, setNewEventTime] = useState('');
+  const [newEventDate, setNewEventDate] = useState('');
+  const [newEventHour12, setNewEventHour12] = useState(9);
+  const [newEventAmPm, setNewEventAmPm] = useState<'AM' | 'PM'>('PM');
+  const [newEventMinute, setNewEventMinute] = useState(0);
   const [newEventVenueId, setNewEventVenueId] = useState('');
   const [creatingEvent, setCreatingEvent] = useState(false);
 
@@ -222,8 +225,17 @@ export default function OperatorPage() {
 
   // ── Create event ──────────────────────────────────────────────────────────
 
+  function getNewEventTime(): string {
+    if (!newEventDate) return '';
+    const hour24 = newEventAmPm === 'AM'
+      ? (newEventHour12 === 12 ? 0 : newEventHour12)
+      : (newEventHour12 === 12 ? 12 : newEventHour12 + 12);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${newEventDate}T${pad(hour24)}:${pad(newEventMinute)}`;
+  }
+
   function resetCreateEventForm() {
-    setNewEventName(''); setNewEventTime(''); setNewEventVenueId('');
+    setNewEventName(''); setNewEventDate(''); setNewEventHour12(9); setNewEventAmPm('PM'); setNewEventMinute(0); setNewEventVenueId('');
     setVenueSearch(''); setVenueDropdownOpen(false);
     setRoomMode('single');
     setMultiRoomNames(['', '']);
@@ -235,9 +247,10 @@ export default function OperatorPage() {
     e.preventDefault();
     setCreatingEvent(true);
     try {
+      const eventTime = getNewEventTime();
       const body: Record<string, unknown> = {
         name: newEventName,
-        startTime: new Date(newEventTime).toISOString(),
+        startTime: new Date(eventTime).toISOString(),
         venueId: newEventVenueId || null,
       };
       if (roomMode === 'multi') {
@@ -245,9 +258,9 @@ export default function OperatorPage() {
       }
       if (recurrenceFrequency) {
         body.recurrenceFrequency = recurrenceFrequency;
-        body.recurrenceDayOfWeek = new Date(newEventTime).getDay();
+        body.recurrenceDayOfWeek = new Date(eventTime).getDay();
         if (recurrenceFrequency === 'MONTHLY') {
-          body.recurrenceDayPosition = getDayPosition(new Date(newEventTime));
+          body.recurrenceDayPosition = getDayPosition(new Date(eventTime));
         }
       }
       const res = await fetch('/api/events', {
@@ -277,7 +290,12 @@ export default function OperatorPage() {
     const venueStillActive = venues.some(v => v.id === event.venue?.id);
     setNewEventVenueId(venueStillActive ? (event.venue?.id ?? '') : '');
     setVenueSearch(venueStillActive ? (event.venue?.name ?? '') : '');
-    setNewEventTime(nextDate);
+    const [datePart, timePart] = nextDate.split('T');
+    const [h, m] = timePart.split(':').map(Number);
+    setNewEventDate(datePart);
+    setNewEventHour12(h === 0 ? 12 : h > 12 ? h - 12 : h);
+    setNewEventAmPm(h < 12 ? 'AM' : 'PM');
+    setNewEventMinute(m);
     setRecurrenceFrequency(event.recurrenceFrequency);
     if (event.rooms.length > 1) {
       setRoomMode('multi');
@@ -575,13 +593,41 @@ export default function OperatorPage() {
                   autoFocus
                   className={inputClass}
                 />
-                <input
-                  type='datetime-local'
-                  value={newEventTime}
-                  onChange={e => setNewEventTime(e.target.value)}
-                  step='900'
-                  className={inputClass}
-                />
+                <div className='flex gap-2'>
+                  <input
+                    type='date'
+                    value={newEventDate}
+                    onChange={e => setNewEventDate(e.target.value)}
+                    className={inputClass + ' flex-1'}
+                  />
+                  <select
+                    value={newEventHour12}
+                    onChange={e => setNewEventHour12(Number(e.target.value))}
+                    className='bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-accent transition-colors text-sm shrink-0'
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={newEventMinute}
+                    onChange={e => setNewEventMinute(Number(e.target.value))}
+                    className='bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-accent transition-colors text-sm shrink-0'
+                  >
+                    <option value={0}>:00</option>
+                    <option value={15}>:15</option>
+                    <option value={30}>:30</option>
+                    <option value={45}>:45</option>
+                  </select>
+                  <select
+                    value={newEventAmPm}
+                    onChange={e => setNewEventAmPm(e.target.value as 'AM' | 'PM')}
+                    className='bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-accent transition-colors text-sm shrink-0'
+                  >
+                    <option value='AM'>AM</option>
+                    <option value='PM'>PM</option>
+                  </select>
+                </div>
 
                 {/* Venue searchable combobox */}
                 <div className='relative' ref={venueComboRef}>
@@ -724,9 +770,9 @@ export default function OperatorPage() {
                         <option value='BIWEEKLY'>Every 2 weeks</option>
                         <option value='MONTHLY'>Every month</option>
                       </select>
-                      {newEventTime && (
+                      {newEventDate && (
                         <p className='text-xs text-gray-500'>
-                          {describeRecurrence(recurrenceFrequency, new Date(newEventTime), getDayPosition(new Date(newEventTime)))}
+                          {describeRecurrence(recurrenceFrequency, new Date(getNewEventTime()), getDayPosition(new Date(getNewEventTime())))}
                         </p>
                       )}
                     </div>
@@ -736,7 +782,7 @@ export default function OperatorPage() {
                 <div className='flex gap-2'>
                   <button
                     type='submit'
-                    disabled={!newEventName.trim() || !newEventTime || !multiRoomValid || creatingEvent}
+                    disabled={!newEventName.trim() || !newEventDate || !multiRoomValid || creatingEvent}
                     className='flex-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-xl transition-colors text-sm cursor-pointer'
                   >
                     {creatingEvent ? 'Creating…' : 'Create event'}
@@ -752,7 +798,7 @@ export default function OperatorPage() {
               </form>
             ) : (
               <button
-                onClick={() => { setNewEventTime(defaultEventTime()); setShowCreateEvent(true); }}
+                onClick={() => { setNewEventDate(defaultEventDate()); setNewEventHour12(9); setNewEventAmPm('PM'); setNewEventMinute(0); setShowCreateEvent(true); }}
                 className='w-full bg-gray-900 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 text-gray-400 hover:text-white text-sm font-medium py-3 rounded-xl transition-colors cursor-pointer'
               >
                 + New event
